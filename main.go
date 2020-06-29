@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"image"
@@ -81,30 +80,33 @@ func mains() {
 		if err != nil {
 			return err
 		}
-		go func() {
-			imagePixel, err := LoadImageFromFile(path)
-			if err == nil {
-				results := n.Calculate(imagePixel)
-				var max float64
-				max = 0
-				idx := 0
-				for index, val := range results {
-					if val > max {
-						idx = index
-						max = val
-					}
+		// go func() {
+		imagePixel, err := LoadImageFromFile(path)
+		if err == nil {
+			results := n.Calculate(imagePixel)
+			var max float64
+			max = results[0]
+			idx := 0
+			for index, val := range results {
+				if val > max {
+					idx = index
+					max = val
 				}
-				log.Println(path, "menghasilkan", idx, "dengan score", results[idx])
 			}
-		}()
-		time.Sleep(1 * time.Nanosecond)
+			log.Println(path, "menghasilkan", idx, imagePixel[0], "dengan score", results[idx])
+		}
+		// }()
+		// time.Sleep(1 * time.Nanosecond)
 		return nil
 	})
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	train()
+	mains()
+	for i := 1; i <= 1000; i++ {
+		train()
+	}
 
 }
 func train() {
@@ -115,55 +117,66 @@ func train() {
 	}
 
 	var speed float64
-	speed = 0.5
+	speed = 0.1
 	n := persist.FromFile("./learn.json")
+	// n := neural.NewNetwork(67500, []int{2, 2, 42})
+	// n.RandomizeSynapses()
+
 	var trainingTotal int
-	// n := neural.NewNetwork(120000, []int{2, 2, 42})
 
-	// filename := "0a3d56c9dedaf2858ece21c3d56e56ab.jpg"
-	var wg sync.WaitGroup
-	for categoryID := 0; categoryID <= 41; categoryID++ {
+	for categoryID := 0; categoryID <= 4; categoryID++ {
 		// n := persist.FromFile("./learn.json")
-		wg.Add(1)
-		go func() {
-			output := tempOutput
-			output[categoryID] = 1
-			catString := fmt.Sprintf("%02d", categoryID)
-			log.Println(catString)
-			directory := "/Users/arief/go/shopee-product-detection-dataset/train/train/" + catString + "/"
 
-			var files []string
-			err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
+		output := tempOutput
+		output[categoryID] = 1
+		catString := fmt.Sprintf("%02d", categoryID)
+		log.Println(catString)
+		directory := "/Users/arief/go/shopee-product-detection-dataset/train/train/" + catString + "/"
+
+		var files []string
+		var totalFile int
+		err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+			totalFile++
+			if err != nil {
+				return err
+			}
+			if totalFile <= 20 {
 				files = append(files, path)
-				return nil
-			})
+			}
+			return nil
+		})
+		if err != nil {
+			log.Println(err)
+		}
+
+		for _, file := range files {
+
+			imagePixel, err := LoadImageFromFile(file)
 			if err != nil {
 				log.Println(err)
+			} else {
+
+				trainingTotal++
+
+				learn.Learn(n, imagePixel, output, speed)
 			}
 
-			for _, file := range files {
+			if trainingTotal%100 == 0 {
+				log.Printf("Sudah training %+v", trainingTotal)
 
-				imagePixel, err := LoadImageFromFile(file)
-				if err != nil {
-					log.Println(err)
-				} else {
-					trainingTotal++
-					learn.Learn(n, imagePixel, output, speed)
-				}
-				if trainingTotal%100 == 0 {
-					log.Printf("Sudah training %+v", trainingTotal)
-				}
+				persist.ToFile("./learn.json", n)
+
 			}
-			// log.Println("Total training ", trainingTotal)
-			persist.ToFile("./learn.json", n)
-			wg.Done()
-		}()
+
+		}
+		// log.Println("Total training ", trainingTotal)
+
+		persist.ToFile("./learn.json", n)
+
 		time.Sleep(1 * time.Second)
+
 	}
-	wg.Wait()
+
 	persist.ToFile("./learn.json", n)
 }
 func LoadImageFromFile(path string) (pixels []float64, err error) {
@@ -183,7 +196,7 @@ func LoadImageFromFile(path string) (pixels []float64, err error) {
 		log.Println(path, err)
 		return
 	}
-	m := resize.Resize(200, 200, img, resize.Lanczos3)
+	m := resize.Resize(150, 150, img, resize.Lanczos3)
 
 	pixels = getPixelFloat(m)
 
